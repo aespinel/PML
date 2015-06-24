@@ -1,0 +1,128 @@
+---
+title: "Practical Machine Learning Project:
+ Weight Lifting Exercises Activity Recognition Analysis "
+author: "Alvaro Espinel"
+date: "June 20, 2015"
+output: html_document
+---
+#Executive Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, and perhaps, they are also data-scientists. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, is used data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.This is an attempt to assess whether it is possible identify mistakes in weight-lifting exercise activities. The original data set used in this analysis was generously made available by the author of the paper [1], which is on "Qualitative Activity Recognition of Weight Lifting Exercises". The model point out that mistakes depends a lot on how  is collected, suggesting the relvance of a supervisor to guide the volunteers in a standard procedure. Under this condition, the analysis shows that using machine learning algorithm is a good approach to identifying mistakes in weight-lifting with very high accuracy.
+
+# Libraries used in R
+```{r, warning=FALSE, message=FALSE}
+library(caret)
+library(kernlab)
+library(randomForest)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(knitr)
+```
+
+#Loading data and preprocessing 
+
+Two csv files with the training and test data was downloaded into a data folder in the working directory /data.
+
+```{r}
+# check if a data folder exists; if not then create one
+if (!file.exists("data")) {dir.create("data")}
+
+# file URL and destination file
+fileUrl1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+destfile1 <- "./data/pml-training.csv"
+fileUrl2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+destfile2 <- "./data/pml-testing.csv"
+
+# download the file and note the time
+dateDownloaded <- date()
+```
+
+The training data was then loaded into R.
+```{r}
+# read the csv file for training 
+data_training <- read.csv("./data/pml-training.csv", na.strings= c("NA",""," "))
+```
+
+Missing (NA) values in the data were removed from the data set. The first eight columns that acted as identifiers for the experiment were also removed.
+```{r}
+# clean the data by removing columns with NAs etc
+data_training_NAs <- apply(data_training, 2, function(x) {sum(is.na(x))})
+data_training_clean <- data_training[,which(data_training_NAs == 0)]
+
+# remove identifier columns such as name, timestamps etc
+data_training_clean <- data_training_clean[8:length(data_training_clean)]
+```
+#Creating a model
+
+The test data set was split up into training and cross validation sets in a 70:30 ratio in order to train the model and then test it against data it was not specifically fitted to.
+
+```{r}
+# split the cleaned testing data into training and cross validation
+inTrain <- createDataPartition(y = data_training_clean$classe, p = 0.7, list = FALSE)
+training <- data_training_clean[inTrain, ]
+crossval <- data_training_clean[-inTrain, ]
+```
+
+A random forest model was selected to predict the classification because it has methods for balancing error in class population unbalanced data sets. The correlation between any two trees in the forest increases the forest error rate. Therefore, a correllation plot was produced in order to see how strong the variables relationships are with each other see figure 1.
+
+In this type of plot the dark red and blue colours indicate a highly negative and positive relationship respectively between the variables. There isn't much concern for highly correlated predictors which means that all of them can be included in the model.
+
+Then a model was fitted with the outcome set to the training class and all the other variables used to predict.
+
+```{r}
+# fit a model to predict the classe using everything else as a predictor
+model <- randomForest(classe ~ ., data = training)
+model
+```
+The model produced a very small OOB error rate of .56%. This was satisfactory to progress the testing.
+
+#Cross-validation
+
+The model was then used to classify the remaining 30% of data. The results were placed in a confusion matrix along with the actual classifications in order to determine the accuracy of the model.
+```{r}
+# crossvalidate the model using the remaining 30% of data
+predictCrossVal <- predict(model, crossval)
+cv_summary <- confusionMatrix(crossval$classe, predictCrossVal)
+cv_summary
+```
+This model yielded a 99.3% prediction accuracy. Again, this model proved very robust and adequete to predict new data.
+
+#Predictions
+
+A separate data set was then loaded into R and cleaned in the same manner as before. The model was then used to predict the classifications of the 20 results of this new data.
+```{r}
+# apply the same treatment to the final testing data
+data_test <- read.csv("./data/pml-testing.csv", na.strings= c("NA",""," "))
+data_test_NAs <- apply(data_test, 2, function(x) {sum(is.na(x))})
+data_test_clean <- data_test[,which(data_test_NAs == 0)]
+data_test_clean <- data_test_clean[8:length(data_test_clean)]
+
+# predict the classes of the test set
+predictTest <- predict(model, data_test_clean)
+predictTest
+```
+#Conclusions
+
+The model we come up with to identify mistakes depends a lot on how we collect the data, which is that we need a supervisor to guide the volunteers in a uniform manner. Under this condition, the analysis shows that using machine learning algorithm is a good approach to identifying mistakes in weight-lifting with very high accuracy of 99.75%.
+
+
+#References
+[1] Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+
+## Addendum: Figures
+
+Figure 1. Correlation Matrix
+````{r}
+# plot a correlation matrix
+correlMatrix <- cor(training[, -length(training)])
+corrplot(correlMatrix, order = "FPC", method = "circle", type = "lower", tl.cex = 0.8,  tl.col = rgb(0, 0, 0))
+````
+
+Figure 2. Dendrogram where each node is an activity
+````{r}
+treeModel <- rpart(classe ~ ., data=training, method="class")
+prp(treeModel) 
+````
